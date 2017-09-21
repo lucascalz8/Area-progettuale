@@ -1,0 +1,228 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+
+\title{ Area progettuale }
+\author{ Luca Scalzotto }
+\date{ September 2017 }
+
+\usepackage{natbib}
+\usepackage{graphicx}
+
+\usepackage{listings}
+\lstset{
+showstringspaces=false,
+tabsize=2
+}
+
+\usepackage[a4paper,top=3cm,bottom=3cm,left=3cm,right=3cm]{geometry}
+\usepackage{tabularx}
+    
+\begin{document}
+
+\maketitle
+
+% \tableofcontents
+
+\section{Introducing Akka}
+This work aims to investigate on some of the features provided by Akka framework. Akka present a good solution for concurrent programming. It also simplifies the scaling out and the scaling up of the systems. \\
+Akka is centered on actors. Actors can receive messages one at a time and execute some behavior whenever a message is received. Messages are simple data structures that can't be changed after they've been created (immutable). \\
+Actors are the building blocks of the system. An actor is a lightweight process that has only four operations:
+\begin{itemize}
+\item \textit{Send} - an actor can only communicate with another actor by sending it messages. Sending messages is always asynchronous (fire and forget style).
+\item \textit{Create} - an actor can create other actors; this automatically creates a hierarchy of actors.
+\item \textit{Become} - an actor can have a different behavior depending on the state he is in.
+\item \textit{Supervise} - any actor can be a supervisor, but only for actors that it creates itself. The supervisor decides what should happen when components fail in the system.
+\end{itemize}
+
+\section{Test-driven development}
+Testing actors is more difficult than testing normal objects for many reasons:
+\begin{itemize}
+\item \textit{Timing} - sending messages is asynchronous, so it's difficult to know when to assert expected values in the unit test.
+\item \textit{Asynchronicity} - actors are meant to be run in parallel on several threads. Multi-threaded tests are more difficult than single-threaded tests and require concurrency primitives to synchronize results from various actors.
+\item \textit{Statelessness} - an actor hides its internal state and doesn't allow access to this state.
+\item \textit{Collaboration/Integration} - it's difficult to test the behavior of a group of actors that collaborate to reach a goal (integration test).
+\end{itemize}
+Luckily, Akka provides the akka-testkit module. This module contains a number of testing tools that makes testing actors a lot easier:
+\begin{itemize}
+\item \textit{Single-threaded unit testing}
+\item \textit{Multi-threaded unit testing}
+\item \textit{Multiple JVM testing}
+\end{itemize}
+
+\section{Fault tolerance}
+Akka simplifies the building of a fault-tolerant application.
+Akka provides two separate flows: one for normal logic and one for fault recovery logic. The normal flow consists of actors that handle normal messages; the recovery flow consists of actors that monitor the actors in the normal flow. Actors that monitor other actors are called supervisors. Instead of catching exceptions in an actor, we'll just let it crash. The actor code for handling messages only contains normal processing logic and no error handling or fault recovery logic, which keeps things much clearer. The mailbox for a crashed actor is suspended until the supervisor in the recovery flow has decided what to do with the exception. A supervisor doesn't "catch exceptions"; it decides what should happen with the crashed actors that it supervises base on the cause of the crash. The supervisor has four options:
+\begin{itemize}
+\item \textit{Restart} - the actor must be re-created from its Props. After it's restarted, the actor will continue to process messages.
+\item \textit{Resume} - the same actor instance should continue to process messages; the crash is ignored.
+\item \textit{Stop} - the actor must be terminated. It will no longer take part in processing messages.
+\item \textit{Escalate} - the supervisor doesn't know that to do with it and escalates the problem to its parent, which is also a supervisor.
+\end{itemize}
+
+\subsection{Example}
+\lstinputlisting[language=Scala]{./projects/faultTolerance/FirstActor.scala}
+\vskip 1cm
+\lstinputlisting[language=Scala]{./projects/faultTolerance/SecondActor.scala}
+\lstinputlisting[language=Scala]{./projects/faultTolerance/Main.scala}
+
+\section{Futures}
+Futures are extremely useful and simple tools for combining functions asynchronously. Actors provide a mechanism to build a system out of concurrent objects, futures provide a mechanism to build a system out of asynchronous functions.
+A future makes it possible to process the result of a function without ever waiting in the current thread for the result. It's a read-only placeholder for a function result (a success or failure) that will be available at some point in the future.
+
+\subsection{Use cases}
+\begin{itemize}
+\item you don't want to block (wait on the current thread) to handle the result of a function
+\item calling a function once-off and handling the result at some point in the future
+\item combining many once-off functions and combining the results
+\item calling many competing functions and only using some of the results, for instance only the fastest response
+\item calling a function and returning a default result when the function throws an exception so the flow can continue
+\item pipe-lining the kind of functions, where one function depends on one or more results of other functions
+\end{itemize}
+
+\subsection{Examples}
+Here are three examples of futures usage:
+\begin{enumerate}
+\item simple example of future usage
+\item futures pipe-line
+\item futures complex combination
+\end{enumerate}
+\lstinputlisting[language=Scala]{./projects/futures/Main.scala}
+\vskip 0.3cm
+Look also at: future.onSuccess(), future.onFailure(), future.recover().
+
+\section{Finite-state machine modeling}
+There are many reason for using stateless components when implementing a system to avoid all kind of problem, like restoring state after an error. But in most cases, there are components within a system that need state to be able to provide the required functionality. A possible solution is to use the become functionality. Another possibility, is using finite state machine modeling. We'll see both in the following paragraphs.
+
+\subsection{Become}
+Akka supports hot-swapping the Actor’s message loop (e.g. its implementation) at run-time: invoke the \textit{context.become} method from within the \textit{Actor}. \textit{become} takes a \textit{PartialFunction[Any, Unit]} that implements the new message handler. The hotswapped code is kept in a stack which can be pushed (\textit{become} method) and popped (\textit{unbecome} method). \\
+N.B.: typically used when it is necessary to define a  simple behavior (maximum two states).
+
+\subsection{Finite-state machine}
+A finite-state machine (FSM) is a common language-independent modeling technique. FSMs can model a number of problems; common applications are communication protocols, language parsing, and even business application problems. What they encourage is isolation of state; transitions from one state to another are caused by the arrival of predefined events and are understood as atomic operations. \\ \\
+Here is an example of finite-state machine that recognizes the regular expression \textit{ab*a}:
+\lstinputlisting[language=Scala]{./projects/fsm/MyActor.scala}
+\vskip 0.5cm
+N.B.: the FSM trait implicitly defines an actor within it.
+
+\section{Distributed system with Akka}
+Distributed computing is hard, notoriously hard. Akka (in particular, the akka-remote module) provides a simple and elegant solution for communicating between actors across the network. Most network technologies use a blocking remote procedure call (RPC), which tries to mask the difference between calling an object locally or remotely. This style of communication works for point-to-point connections, but isn't a good solution for large-scale networks. Akka takes a different approach when it comes to scaling out applications across the network: you have transparency of remoting actors and you can continue to work with messages as before (in this case they'll be sent to remote actors).
+To get a reference to an actor on a remote node, you have to look up the actor by its path: \\ \\
+\centerline{\textit{akka.tcp://back-end@host:port/user/actorPath}}
+\\ \\
+In addition, a configuration file need to be created in order to allow the remote look up.
+\subsection{Example}
+CLIENT
+\lstinputlisting[language=Scala]{./projects/distributed/Client.scala}
+\vskip 0.3cm
+SERVER
+\lstinputlisting[language=Scala]{./projects/distributed/Server.scala}
+
+\subsection{Configuration files}
+CLIENT
+\lstinputlisting{./projects/distributed/client.conf}
+\vskip 1cm
+SERVER
+\lstinputlisting{./projects/distributed/server.conf}
+\vskip 0.5cm
+
+\section{Message channels}
+Akka has defined a generalized interface: the \textit{EventBus}, which can be implemented to create a publish-subscribe channel. An \textit{EventBus} is generalized so that it can be use for all implementations of a public-subscribe channel. In the generalized form, there are three entities:
+\begin{itemize}
+\item \textit{Event}: this is the type of all events published on that bus.
+\item \textit{Subscriber}: this is the type of subscriber allowed to register on that event bus (e.g. \textit{ActorRef}).
+\item \textit{Classifier}: this defines the classifier to be used in selecting subscribers for dispatching events.
+\end{itemize}
+Here is the complete interface of the \textit{EventBus}:
+\begin{lstlisting}[language=Scala]
+package akka.event
+
+trait EventBus {
+  type Event
+  type Classifier
+  type Subscriber
+  
+  def subscribe(subscriber: Subscriber, to: Classifier): Boolean
+  
+  def unsubscribe(subscriber: Subscriber, from: Classifier): Boolean
+                
+  def unsubscribe(subscriber: Subscriber): Unit
+  
+  def publish(event: Event): Unit
+}
+\end{lstlisting}
+\vskip 0.3cm
+The whole interface has to be implemented, and because most implementations need the same functionality, Akka also has a set of composable traits implementing the \textit{EventBus} interface, which can be used to easily create your own implementation of \textit{EventBus}.
+Akka has three composable traits that can help you track of the subscribers. All these traits are still generic, so they can be used with any entities you have defined.
+\begin{itemize}
+\item \textit{LookupClassification}: this trait uses the most basic classification. It maintains a set of subscribers for each possible classifier and extracts a classifier from each event. It extracts a classifier using the \textit{classify} method, which should be implemented by the custom \textit{EventBus} implementation.
+\item \textit{SubchannelClassification}: this trait is used when classifiers form a hierarchy and it is desired that subscription be possible not only at the leaf nodes, but also at the higher nodes.
+\item \textit{ScanningClassification}: this trait is a more complex one; i can be used when classifiers have an overlap. This means that one \textit{Event} can be part of more classifiers.
+\end{itemize}
+In the following examples we'll use the \textit{LookupClassification}. This trait implement the \textit{subscribe} and \textit{unsubscribe} methods of the \textit{EventBus} interface. But it also introduce new abstract methods that need to be implemented in our class:
+\begin{itemize}
+\item \textit{classify(event: Event): Classifier} - this is used for extracting the classifier from the incoming events.
+\item \textit{publish(event: Event, subscriber: Subscriber): Unit} - this method will be invoked for each event for all subscribers that registered themselves for the events classifier.
+\item \textit{mapSize: Int} - this returns the expected number of the different classifiers. This is used for the initial size of an internal data structure.
+\end{itemize}
+
+\subsection{Example 1 - local}
+
+\lstinputlisting[language=Scala]{./projects/eventBus/local/MyActor.scala}
+\lstinputlisting[language=Scala]{./projects/eventBus/local/MessageBus.scala}
+\lstinputlisting[language=Scala]{./projects/eventBus/local/Main.scala}
+
+\vskip 0,3cm
+
+\subsection{Example 2 - remote}
+The EventBus itself is local, meaning that events are not automatically transferred to EventBuses on other systems, but you can subscribe any ActorRef you want, including remote ones. You only need an actor on the node where the EventBus is that takes care of subscribing remote actors and publishing their messages.
+
+\subsubsection{Client}
+\lstinputlisting[language=Scala]{./projects/eventBus/remote/Client.scala}
+\vskip 0.3cm
+\subsubsection{Server}
+\lstinputlisting[language=Scala]{./projects/eventBus/remote/MessageBus.scala}
+\lstinputlisting[language=Scala]{./projects/eventBus/remote/RemoteActor.scala}
+\vskip 0,5cm
+
+\section{REST Api}
+The akka-http module provides an API to build HTTP clients and servers. The REST architectural style can be used for defining the API of the HTTP service.
+Defining routes is done by using directives. A directive is a rule that the received HTTP request should match. A directive has one or more of the following functions:
+\begin{itemize}
+\item Transforms the request
+\item Filters the request
+\item Completes the request
+\end{itemize}
+Directives are small building blocks out of which you can construct arbitrarily complex route and handling structures. The generic form is this: \\ \\
+\centerline{\textit{name(arguments) $\{$ extractions =$\>$ ... $\}$}}
+\\ \\
+akka-http has a lot of predefined directives like get, post, put, delete. The route needs to complete the HTTP request with an HTTP response for every matched pattern.
+
+\subsection{Example}
+\lstinputlisting[language=Scala]{./projects/rest/Application.scala}
+\vskip 0,3cm
+
+\section{Conclusions}
+
+\newcolumntype{M}[1]{>{\centering\arraybackslash}m{#1}}
+\newcolumntype{N}{@{}m{0pt}@{}}
+
+\begin{table}[ht]
+\begin{tabular}{|M{3.5cm}|M{5.5cm}|M{4.5cm}|N}
+\hline
+  Fault tolerance & "let it crash", supervision strategy & ... & \\ [25pt]
+  \hline
+  Finite-state machine & become/unbecome, FSM trait & ... & \\ [25pt]
+  \hline
+  Distributed system & configuration files & ... & \\ [25pt]
+  \hline
+  Event & EventBus & ... & \\ [25pt]
+  \hline
+  Rest & Rest API (route, directives, path) & ... & \\ [25pt]
+  \hline
+  Transaction & Transactor & ... & \\ [25pt]
+  \hline
+\end{tabular}
+\end{table}
+
+
+\end{document}
